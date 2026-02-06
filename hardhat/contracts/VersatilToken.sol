@@ -26,14 +26,13 @@ interface IUniswapV3Pool {
 
 }
 
-
 contract VersatilToken is Context, IERC20, IERC20Metadata {
     string private _name;
     string private _symbol;
     uint8 private _decimals = 18;
 
-    address public immutable USDC;
-    address public immutable EUROC;
+    address public immutable TOKEN0;
+    address public immutable TOKEN1;
     address public immutable UNISWAP_ROUTER;
     address public immutable UNISWAP_POOL;
     uint24 public constant FEE = 3000; // 0.3%
@@ -49,8 +48,8 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
         string memory name_,
         string memory symbol_
     ) {
-        USDC = _token0;
-        EUROC = _token1;
+        TOKEN0 = _token0;
+        TOKEN1 = _token1;
         UNISWAP_ROUTER = _router;
         UNISWAP_POOL = _pool;
         _name = name_;
@@ -75,44 +74,38 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
     }
 
     function balanceOf(address account) public view override returns (uint256) {
-        uint256 eurocBalance = IERC20(EUROC).balanceOf(account);
-        if (eurocBalance == 0) return 0;
+        uint256 token1Balance = IERC20(TOKEN1).balanceOf(account);
+        if (token1Balance == 0) return 0;
         // Lire le prix spot EUROC/USDC depuis la pool Uniswap V3
         (uint160 sqrtPriceX96,, , , , ,) = IUniswapV3Pool(UNISWAP_POOL).slot0();
         // Déterminer l'ordre des tokens dans la pool
         address token0 = IUniswapV3Pool(UNISWAP_POOL).token0();
         address token1 = IUniswapV3Pool(UNISWAP_POOL).token1();
         uint256 priceX96;
-        if (token0 == EUROC && token1 == USDC) {
+        if (token0 == TOKEN1 && token1 == TOKEN0) {
             // prix = (sqrtPriceX96^2) / 2^192
             priceX96 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96) / (2**192);
-            // EUROC -> USDC
+            // EUROC -> USDCtoken1Balance
             // Adapter les décimales : USDC 6, EUROC 6 ou 18
-            return eurocBalance * priceX96 / (10**18);
-        } else if (token0 == USDC && token1 == EUROC) {
+        return token1Balance * priceX96 / (10**18);
+        } else if (token0 == TOKEN0 && token1 == TOKEN1) {
             // prix = (2^192) / (sqrtPriceX96^2)
             priceX96 = (2**192) / (uint256(sqrtPriceX96) * uint256(sqrtPriceX96));
             // EUROC -> USDC
-            return eurocBalance * priceX96 / (10**18);
+            return token1Balance * priceX96 / (10**18);
         } else {
             return 0;
         }
     }
 
-    // Nouvelle fonction payable pour swap stETH contre USDC
-    // Nouvelle fonction : swap tout le solde stETH de l'utilisateur contre USDC (exemple, à adapter selon besoin)
-    function transferWithStETH(address recipient, uint256 stethAmount) public returns (bool) {
-        address sender = _msgSender();
-        require(IERC20(EUROC).balanceOf(sender) >= stethAmount, "Insufficient stETH");
-        require(IERC20(EUROC).transferFrom(sender, address(this), stethAmount), "stETH transfer failed");
-        _swapExactOutputUSDC(recipient, stethAmount);
-        emit Transfer(sender, recipient, stethAmount);
-        return true;
-    }
-
     // Laisser la fonction transfer standard revert
-    function transfer(address, uint256) public pure override returns (bool) {
-        revert("Use transferWithStETH");
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        address sender = _msgSender();
+        require(IERC20(TOKEN1).balanceOf(sender) >= amount, "Insufficient balance");
+        require(IERC20(TOKEN1).transferFrom(sender, address(this), amount), "transfer failed");
+        _swapExactOutput(recipient, amount);
+        emit Transfer(sender, recipient, amount);
+        return true;
     }
 
     function allowance(address owner, address spender) public view override returns (uint256) {
@@ -126,27 +119,26 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
         return true;
     }
 
-    function transferFrom(address sender, address recipient, uint256 stethAmount) public override returns (bool) {
-        uint256 currentAllowance = _allowances[sender][_msgSender()];
-        require(currentAllowance >= stethAmount, "ERC20: transfer amount exceeds allowance");
-        _allowances[sender][_msgSender()] = currentAllowance - stethAmount;
-        require(IERC20(EUROC).balanceOf(sender) >= stethAmount, "Insufficient stETH");
-        require(IERC20(EUROC).transferFrom(sender, address(this), stethAmount), "stETH transfer failed");
-        _swapExactOutputUSDC(recipient, stethAmount);
-        emit Transfer(sender, recipient, stethAmount);
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        // uint256 currentAllowance = _allowances[sender][_msgSender()];
+        // require(currentAllowance >= amount, "ERC20: transfer amount exceeds allowance");
+        // _allowances[sender][_msgSender()] = currentAllowance - amount;
+        require(IERC20(TOKEN1).balanceOf(sender) >= amount, "Insufficient balance");
+        require(IERC20(TOKEN1).transferFrom(sender, address(this), amount), "transfer failed");
+        _swapExactOutput(recipient, amount);
+        emit Transfer(sender, recipient, amount);
         return true;
     }
 
-    function _swapExactOutputUSDC(address to, uint256 stethAmount) internal {
-        // Swap tout le stETH reçu contre USDC (slippage à gérer côté front ou à améliorer ici)
-        IERC20(EUROC).approve(UNISWAP_ROUTER, stethAmount);
+    function _swapExactOutput(address to, uint256 amount) internal {
+        IERC20(TOKEN1).approve(UNISWAP_ROUTER, amount);
         ExactInputSingleParams memory params = ExactInputSingleParams({
-            tokenIn: EUROC,
-            tokenOut: USDC,
+            tokenIn: TOKEN1,
+            tokenOut: TOKEN0,
             fee: FEE,
             recipient: to,
             deadline: block.timestamp,
-            amountIn: stethAmount,
+            amountIn: amount,
             amountOutMinimum: 0,
             sqrtPriceLimitX96: 0
         });
