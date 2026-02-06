@@ -15,15 +15,30 @@ struct ExactInputSingleParams {
     uint256 amountOutMinimum;
     uint160 sqrtPriceLimitX96;
 }
+
 interface IUniswapV3Router {
-    function exactInputSingle(ExactInputSingleParams calldata params) external payable returns (uint256 amountOut);
+    function exactInputSingle(
+        ExactInputSingleParams calldata params
+    ) external payable returns (uint256 amountOut);
 }
 
 interface IUniswapV3Pool {
-    function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked);
-    function token0() external view returns (address);
-    function token1() external view returns (address);
+    function slot0()
+        external
+        view
+        returns (
+            uint160 sqrtPriceX96,
+            int24 tick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            uint16 observationCardinalityNext,
+            uint8 feeProtocol,
+            bool unlocked
+        );
 
+    function token0() external view returns (address);
+
+    function token1() external view returns (address);
 }
 
 contract VersatilToken is Context, IERC20, IERC20Metadata {
@@ -38,7 +53,6 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
     uint24 public constant FEE = 3000; // 0.3%
 
     mapping(address => mapping(address => uint256)) private _allowances;
-
 
     constructor(
         address _token0,
@@ -55,7 +69,6 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
         _name = name_;
         _symbol = symbol_;
     }
-
 
     function name() public view override returns (string memory) {
         return _name;
@@ -77,54 +90,89 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
         uint256 token1Balance = IERC20(TOKEN1).balanceOf(account);
         if (token1Balance == 0) return 0;
         // Lire le prix spot EUROC/USDC depuis la pool Uniswap V3
-        (uint160 sqrtPriceX96,, , , , ,) = IUniswapV3Pool(UNISWAP_POOL).slot0();
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(UNISWAP_POOL)
+            .slot0();
         // Déterminer l'ordre des tokens dans la pool
         address token0 = IUniswapV3Pool(UNISWAP_POOL).token0();
         address token1 = IUniswapV3Pool(UNISWAP_POOL).token1();
-        uint256 priceX96;
+        uint256 sqrtP = uint256(sqrtPriceX96);
+        require(sqrtP != 0, "sqrtPriceX96=0");
+
+        uint256 Q96 = uint256(1) << 96;
+        uint256 Q192 = uint256(1) << 192;
+
+        // price1Per0_X96 = sqrtP^2 / 2^96  (safe: shift before squaring)
+        uint256 s = sqrtP >> 48; // reduce magnitude
+        uint256 price1Per0_X96 = s * s; // == sqrtP^2 / 2^96
+        require(price1Per0_X96 != 0, "price1Per0_X96=0");
+
+        // price0Per1_X96 = Q96^2 / price1Per0_X96 = Q192 / price1Per0_X96
+        uint256 price0Per1_X96 = Q192 / price1Per0_X96;
+        require(price0Per1_X96 != 0, "price0Per1_X96=0");
+
         if (token0 == TOKEN1 && token1 == TOKEN0) {
-            // prix = (sqrtPriceX96^2) / 2^192
-            priceX96 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96) / (2**192);
-            // EUROC -> USDCtoken1Balance
-            // Adapter les décimales : USDC 6, EUROC 6 ou 18
-        return token1Balance * priceX96 / (10**18);
+            // token0Amount = token1Amount * (token0 per token1)
+            return (token1Balance * price0Per1_X96) / Q96;
         } else if (token0 == TOKEN0 && token1 == TOKEN1) {
-            // prix = (2^192) / (sqrtPriceX96^2)
-            priceX96 = (2**192) / (uint256(sqrtPriceX96) * uint256(sqrtPriceX96));
-            // EUROC -> USDC
-            return token1Balance * priceX96 / (10**18);
+            // token1Amount = token0Amount * (token1 per token0)
+            return (token1Balance * price1Per0_X96) / Q96;
         } else {
-            return 0;
+            revert("Pool tokens do not match");
         }
     }
 
     // Laisser la fonction transfer standard revert
-    function transfer(address recipient, uint256 amount) public override returns (bool) {
+    function transfer(
+        address recipient,
+        uint256 amount
+    ) public override returns (bool) {
         address sender = _msgSender();
-        require(IERC20(TOKEN1).balanceOf(sender) >= amount, "Insufficient balance");
-        require(IERC20(TOKEN1).transferFrom(sender, address(this), amount), "transfer failed");
+        require(
+            IERC20(TOKEN1).balanceOf(sender) >= amount,
+            "Insufficient balance"
+        );
+        require(
+            IERC20(TOKEN1).transferFrom(sender, address(this), amount),
+            "transfer failed"
+        );
         _swapExactOutput(recipient, amount);
         emit Transfer(sender, recipient, amount);
         return true;
     }
 
-    function allowance(address owner, address spender) public view override returns (uint256) {
+    function allowance(
+        address owner,
+        address spender
+    ) public view override returns (uint256) {
         return _allowances[owner][spender];
     }
 
-    function approve(address spender, uint256 amount) public override returns (bool) {
+    function approve(
+        address spender,
+        uint256 amount
+    ) public override returns (bool) {
         address owner = _msgSender();
         _allowances[owner][spender] = amount;
         emit Approval(owner, spender, amount);
         return true;
     }
 
-    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) public override returns (bool) {
         // uint256 currentAllowance = _allowances[sender][_msgSender()];
         // require(currentAllowance >= amount, "ERC20: transfer amount exceeds allowance");
         // _allowances[sender][_msgSender()] = currentAllowance - amount;
-        require(IERC20(TOKEN1).balanceOf(sender) >= amount, "Insufficient balance");
-        require(IERC20(TOKEN1).transferFrom(sender, address(this), amount), "transfer failed");
+        require(
+            IERC20(TOKEN1).balanceOf(sender) >= amount,
+            "Insufficient balance"
+        );
+        require(
+            IERC20(TOKEN1).transferFrom(sender, address(this), amount),
+            "transfer failed"
+        );
         _swapExactOutput(recipient, amount);
         emit Transfer(sender, recipient, amount);
         return true;
@@ -144,7 +192,6 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
         });
         IUniswapV3Router(UNISWAP_ROUTER).exactInputSingle(params);
     }
-
 
     // Pas besoin de receive payable
 }
