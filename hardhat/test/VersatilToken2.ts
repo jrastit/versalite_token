@@ -54,4 +54,20 @@ describe("VersatilToken on Arbitrum fork", function () {
     const valueInUSDCe = Number(ethers.formatUnits(value, usdceDecimals));
     console.log("Value in USDCe:", valueInUSDCe);
   });
+
+  it("should return the correct decimals", async function () {
+    const VersatilToken = await ethers.getContractFactory("VersatilToken");
+    const v = await VersatilToken.deploy(
+      USDCe,
+      WETH,
+      ROUTER,
+      POOL,
+      "vUSDC_WETH",
+      "vUSDC_WETH",
+    );
+    await v.waitForDeployment();
+
+    const decimals = await v.decimals();
+    expect(decimals).to.equal(usdceDecimals);
+  });
 });

@@ -47,7 +47,6 @@ interface IUniswapV3Pool {
 contract VersatilToken is Context, IERC20, IERC20Metadata {
     string private _name;
     string private _symbol;
-    uint8 private _decimals = 18;
 
     address public immutable TOKEN0;
     address public immutable TOKEN1;
@@ -82,7 +81,7 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
     }
 
     function decimals() public view override returns (uint8) {
-        return _decimals;
+        return IERC20Metadata(TOKEN0).decimals();
     }
 
     function totalSupply() public pure override returns (uint256) {
@@ -136,9 +135,6 @@ contract VersatilToken is Context, IERC20, IERC20Metadata {
 
     // price = (sqrtPriceX96^2) / 2^192  gives token1/token0 in raw units
     uint256 priceX192 = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
-
-    uint8 dec0 = IERC20Metadata(TOKEN0).decimals();
-    uint8 dec1 = IERC20Metadata(TOKEN1).decimals();
 
     // We want: amountOut (TOKEN0 units) for amountIn (TOKEN1 units)
     // If pool token0 == TOKEN0 and token1 == TOKEN1:
