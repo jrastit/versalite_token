@@ -7,6 +7,5 @@ import type * as versatilTokenSol from "./VersatilToken.sol";
 export type { versatilTokenSol };
 import type * as preusdcSol from "./preusdc.sol";
 export type { preusdcSol };
-export type { Counter } from "./Counter";
 export type { MockERC20 } from "./MockERC20";
 export type { MockUniswapV3Pool } from "./MockUniswapV3Pool";

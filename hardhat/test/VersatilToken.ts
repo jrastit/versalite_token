@@ -10,7 +10,7 @@ describe("VersatilToken", function () {
   let owner: any;
   let user: any;
 
-  const ratio = 25n; // token1 vaut 25x token0
+  const token0PerToken1 = 25n;
   const amount = 1000n;
 
   function sqrtBigInt(value: bigint): bigint {
@@ -24,6 +24,17 @@ describe("VersatilToken", function () {
     }
     return x0;
   }
+
+  // sqrtPriceX96 for a rational price amount1/amount0 (token1 per token0)
+  function sqrtPriceX96FromRatio(amount1: bigint, amount0: bigint): bigint {
+  // sqrtPriceX96 = floor( sqrt(amount1/amount0) * 2^96 )
+  // = floor( sqrt(amount1) * 2^96 / sqrt(amount0) )
+  const Q96 = 2n ** 96n;
+  const num = sqrtBigInt(amount1) * Q96;
+  const den = sqrtBigInt(amount0);
+  if (den === 0n) throw new Error("amount0 sqrt is 0");
+  return num / den;
+}
 
   beforeEach(async function () {
     [owner, user] = await ethers.getSigners();
@@ -39,8 +50,8 @@ describe("VersatilToken", function () {
     const token0Addr = await token0.getAddress();
     const token1Addr = await token1.getAddress();
 
-    const sqrtRatio = sqrtBigInt(ratio);
-    const sqrtPriceX96 = sqrtRatio * (2n ** 96n);
+    
+    const sqrtPriceX96 = sqrtPriceX96FromRatio(1n, token0PerToken1);
 
     const MockUniswapV3Pool = await ethers.getContractFactory("MockUniswapV3Pool");
     pool = await MockUniswapV3Pool.deploy(sqrtPriceX96, token0Addr, token1Addr);
@@ -69,7 +80,7 @@ describe("VersatilToken", function () {
   it("should return the correct balance converted via Uniswap", async function () {
     const balance = await versatilToken.balanceOf(user.address);
 
-    const expected = ethers.parseUnits((ratio * amount).toString(), 18);
+    const expected = ethers.parseUnits((token0PerToken1 * amount).toString(), 18);
     expect(balance).to.equal(expected);
   });
 

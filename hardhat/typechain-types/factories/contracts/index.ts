@@ -4,6 +4,5 @@
 export * as mockUniswapSol from "./MockUniswap.sol";
 export * as versatilTokenSol from "./VersatilToken.sol";
 export * as preusdcSol from "./preusdc.sol";
-export { Counter__factory } from "./Counter__factory";
 export { MockERC20__factory } from "./MockERC20__factory";
 export { MockUniswapV3Pool__factory } from "./MockUniswapV3Pool__factory";
