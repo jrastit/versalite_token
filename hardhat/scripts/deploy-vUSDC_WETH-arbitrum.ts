@@ -1,5 +1,4 @@
-import { network } from "hardhat";
-const { ethers } = await network.connect();
+import { ethers } from "hardhat";
 
 async function main() {
   // Adresses officielles Arbitrum

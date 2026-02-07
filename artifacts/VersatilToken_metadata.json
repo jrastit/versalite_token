@@ -408,11 +408,11 @@
 			]
 		},
 		"hardhat/contracts/VersatilToken.sol": {
-			"keccak256": "0xccd9f172ed59901a57bb40e793124f9b8a0216fb108ea6d4fad4b34aa22b1258",
+			"keccak256": "0xc2b85dc697338c1c6d7682560db22402fbfdbf3342584df8431f2643d8ad96f9",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://bccd2330b7dc1a5d5a93ead5cf7e7b1380f3ff70a0a0924caeb6835314697a2a",
-				"dweb:/ipfs/QmNQr6yArT3LGtgCm7FffnLqAanzbEJ4gBWXMiuAxvyCj8"
+				"bzz-raw://dea3cd7fe791cc531174074e4cae10350b9c13c9f05e132f5fa970edbf858b0f",
+				"dweb:/ipfs/QmVKBG4dU9tKibgnBLjkG8q6xt2hwzu9tGAHjDWUVkfW92"
 			]
 		}
 	},

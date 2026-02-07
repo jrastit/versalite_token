@@ -1,8 +1,5 @@
 import { expect } from "chai";
-import { network } from "hardhat";
-import { assert } from "node:console";
-
-const { ethers } = await network.connect();
+import { ethers } from "hardhat";
 
 describe("VersatilToken", function () {
   let token0: any;
@@ -12,79 +9,81 @@ describe("VersatilToken", function () {
   let versatilToken: any;
   let owner: any;
   let user: any;
-  let ratio = 25n; // Ratio de prix entre token1 et token0 (token1 vaut 25 fois token0)
-  let amount = 1000n;
+
+  const ratio = 25n; // token1 vaut 25x token0
+  const amount = 1000n;
+
+  function sqrtBigInt(value: bigint): bigint {
+    if (value < 0n) throw new Error("negative");
+    if (value < 2n) return value;
+    let x0 = value / 2n;
+    let x1 = (x0 + value / x0) / 2n;
+    while (x1 < x0) {
+      x0 = x1;
+      x1 = (x0 + value / x0) / 2n;
+    }
+    return x0;
+  }
 
   beforeEach(async function () {
     [owner, user] = await ethers.getSigners();
-    // Déployer deux tokens ERC20 mock
-    const MockERC20 = await ethers.getContractFactory("MockERC20");
-    token0 = await MockERC20.deploy("Token0", "TK0", 18);
-    assert(token0.target, "Failed to deploy token0");
-    token1 = await MockERC20.deploy("Token1", "TK1", 18);
-    assert(token1.target, "Failed to deploy token1");
 
-    // Calcul du sqrtPriceX96 pour ratio = 25 * 10^18
-    const ratio = 25n;
-    // sqrtPriceX96 = sqrt(ratio) * 2^96
-    // Utilisation de ethers.BigNumber pour éviter l'overflow
-    function sqrtBigInt(value: bigint): bigint {
-      // Newton's method for integer square root
-      if (value < 0n) throw new Error("negative");
-      if (value < 2n) return value;
-      let x0 = value / 2n;
-      let x1 = (x0 + value / x0) / 2n;
-      while (x1 < x0) {
-        x0 = x1;
-        x1 = (x0 + value / x0) / 2n;
-      }
-      return x0;
-    }
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
+
+    token0 = await MockERC20.deploy("Token0", "TK0", 18);
+    await token0.waitForDeployment();
+
+    token1 = await MockERC20.deploy("Token1", "TK1", 18);
+    await token1.waitForDeployment();
+
+    const token0Addr = await token0.getAddress();
+    const token1Addr = await token1.getAddress();
+
     const sqrtRatio = sqrtBigInt(ratio);
-    const sqrtPriceX96 = sqrtRatio * 2n ** 96n;
-    const MockUniswapV3Pool = await ethers.getContractFactory(
-      "MockUniswapV3Pool",
-    );
-    // Déployer un router mock
-    pool = await MockUniswapV3Pool.deploy(
-      sqrtPriceX96,
-      token0.target,
-      token1.target,
-    );
-    assert(pool.target, "Failed to deploy pool");
+    const sqrtPriceX96 = sqrtRatio * (2n ** 96n);
+
+    const MockUniswapV3Pool = await ethers.getContractFactory("MockUniswapV3Pool");
+    pool = await MockUniswapV3Pool.deploy(sqrtPriceX96, token0Addr, token1Addr);
+    await pool.waitForDeployment();
+    const poolAddr = await pool.getAddress();
+
     const MockRouter = await ethers.getContractFactory("MockRouter");
-    router = await MockRouter.deploy(token0.target);
-    assert(router.target, "Failed to deploy router");
-    // Déployer VersatilToken
+    router = await MockRouter.deploy(token0Addr);
+    await router.waitForDeployment();
+    const routerAddr = await router.getAddress();
+
     const VersatilToken = await ethers.getContractFactory("VersatilToken");
     versatilToken = await VersatilToken.deploy(
-      token0.target,
-      token1.target,
-      router.target,
-      pool.target,
+      token0Addr,
+      token1Addr,
+      routerAddr,
+      poolAddr,
       "VersatilToken",
-      "VVT",
+      "VVT"
     );
-    // Mint des tokens à l'utilisateur
+    await versatilToken.waitForDeployment();
+
     await token1.mint(user.address, ethers.parseUnits(amount.toString(), 18));
   });
 
   it("should return the correct balance converted via Uniswap", async function () {
-    // Le solde converti doit être > 0 si le pool est bien paramétré
     const balance = await versatilToken.balanceOf(user.address);
-    expect(balance).to.be.a("bigint");
-    expect(balance).to.be.greaterThan(0n);
-    expect(balance).to.equal(ethers.parseUnits((ratio * amount).toString(), 18)); // 1000 TK1 convertis en TK0 au ratio 1:25
+
+    const expected = ethers.parseUnits((ratio * amount).toString(), 18);
+    expect(balance).to.equal(expected);
   });
 
   it("should allow transfer and emit event", async function () {
+    const versatilAddr = await versatilToken.getAddress();
+
     await token1
       .connect(user)
-      .approve(versatilToken.target, ethers.parseUnits("10", 18));
+      .approve(versatilAddr, ethers.parseUnits("10", 18));
+
     await expect(
       versatilToken
         .connect(user)
-        .transfer(owner.address, ethers.parseUnits("10", 18)),
+        .transfer(owner.address, ethers.parseUnits("10", 18))
     ).to.emit(versatilToken, "Transfer");
   });
 });
